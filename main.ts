@@ -13,16 +13,32 @@
 // Outside the grader's container, MAKEFUN_BOT_DIR and MAKEFUN_OUTPUT_DIR stand in for /bot and /output:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? '/bot';
 const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
+// The gate refuses short TikTok links, so the entry must name the full
+// /@handle/video/<id> address: check it here and fail loudly instead of
+// shipping a link the house cannot read.
+const TIKTOK_VIDEO_URL = /^https:\/\/www\.tiktok\.com\/@[^/]+\/video\/\d+$/;
+
 mkdirSync(OUTPUT_DIR, { recursive: true });
 try {
+  const raw = readFileSync(join(BOT_DIR, 'VIDEO.json'), 'utf8');
+  const parsed = JSON.parse(raw) as unknown;
+  const url = (parsed as { url?: unknown }).url;
+  if (typeof url !== 'string' || !TIKTOK_VIDEO_URL.test(url)) {
+    console.error('VIDEO.json does not name a full TikTok video URL (https://www.tiktok.com/@handle/video/<id>)');
+    process.exit(1);
+  }
   copyFileSync(join(BOT_DIR, 'VIDEO.json'), join(OUTPUT_DIR, 'VIDEO.json'));
 } catch (err) {
-  console.error(`VIDEO.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`);
+  if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+    console.error(`VIDEO.json could not be found in ${BOT_DIR}`);
+  } else {
+    console.error(`VIDEO.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`);
+  }
   process.exit(1);
 }
